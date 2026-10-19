@@ -1,267 +1,177 @@
-# Cline Automation Framework
+# ZincBank Test Automation
 
-A production‑ready, AI‑first UI automation platform built on **Playwright**, **TypeScript**, **Cucumber (BDD)**, **Page Object Model**, **Component Object Model**, **Allure**, **GitHub Actions**, **ESLint**, **Prettier**, **Husky**, and **dotenv**.
+[![Framework Checks](https://github.com/RolanV/ZincBank/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/RolanV/ZincBank/actions/workflows/ci.yml)
+[![E2E (live demo app)](https://github.com/RolanV/ZincBank/actions/workflows/e2e.yml/badge.svg?branch=main&event=push)](https://github.com/RolanV/ZincBank/actions/workflows/e2e.yml)
 
-## Getting Started
+Playwright + TypeScript + Cucumber BDD test automation for **ZincBank**, a banking practice application hosted by CYDEO at `zincbank.cydeo.io`.
 
-1. **Install dependencies**
+An educational QA automation project, built with AI assistance on a framework introduced during instructor-led CYDEO training. The focus is specification design, framework architecture, and a CI setup that stays verifiable even when the application under test is not — ZincBank is third-party and may change or be withdrawn at any time.
 
-   ```bash
-   npm ci
-   ```
+## What it demonstrates
 
-   ***
+- **BDD specification design** — Gherkin features tagged for selective execution across automatic, regression, and known-defect suites
+- **Page Object Model** — locators and interactions encapsulated; page objects carry no assertions, so one object serves both positive and negative scenarios
+- **Cucumber lifecycle management** — a typed custom `World`, a fresh browser context per scenario, tracing on every scenario, screenshot and trace retained only on failure
+- **CI design under an external dependency** — framework validation separated from live browser execution, so neither is hostage to the other
+- **Defect investigation** — a flaky test diagnosed from Playwright trace evidence rather than retried: see the [case study](docs/case-study-navigation-race.md)
 
-   if not work
-   ---
+## Stack
 
-   ```bash
-   npm install --legacy-peer-deps
-   ```
+| Tool | Role |
+|---|---|
+| Playwright 1.62 | Browser automation (Chromium) |
+| TypeScript 5 | Step definitions, page objects |
+| Cucumber.js 13 | BDD runner, Gherkin parsing, tag filtering |
+| Cucumber HTML formatter | Test report |
+| GitHub Actions | CI — two workflows |
+| ESLint, Prettier | Lint and format |
 
-2. **Set up environment variables**
+**Node 22** is the version verified in GitHub Actions (v22.23.3). `@cucumber/cucumber@13` declares `engines.node: "22 || 24 || >=26"`.
 
-   ```bash
-   cp .env.example .env
-   # Fill in required values
-   ```
+## Architecture
 
-3. **Run the test suite**
+```text
+features/                  Gherkin specifications
+  account-opening/           A1 - open a checking account
+  authentication/            A2 - sign in
+  duplicate-email/           A3 - duplicate-email registration
+steps/                     Step definitions, mirroring features/
+pages/                     BasePage, LoginPage, OpenAccountPage, DuplicateEmailPage
+hooks/globalHooks.ts       Cucumber World, browser lifecycle, tracing
+globalPagesSetup.ts        Page-object wiring, re-initialised per scenario
+utilities/                 Shared helpers
+data/                      Test-data fixtures
+.clinerules/               Markdown rule definitions
+.cline/                    Markdown agent, skill, prompt and template definitions
+.github/workflows/         ci.yml (Framework Checks), e2e.yml (Live E2E)
+docs/                      CI evidence record and case study
+```
 
-   ```bash
-   npm run test
-   ```
+### Design decisions
 
-4. **Generate an Allure report**
+**Typed Cucumber `World`.** `CustomWorld` carries per-scenario data such as the registered email and entered form values, so assertions compare against what the scenario itself produced rather than against fixed fixtures.
 
-   ```bash
-   npm run allure:serve
-   ```
+**Fresh browser per scenario.** `Before` launches Chromium, opens a context and page, and starts tracing. `After` captures a screenshot and trace only when `scenario.result.status === FAILED`, and discards the trace otherwise — diagnostics when they are useful, no storage cost when they are not.
 
-5. **View a failure trace**
+**Serial execution.** Scenarios run serially: `cucumber.js` sets no `parallel` option. Page-object wiring is held in module-level bindings in `globalPagesSetup.ts`, reassigned for each scenario by `initElements()`. Parallel execution is not configured and has not been tested here; that wiring would need review and verification before enabling it.
 
-   When a scenario fails, a Playwright trace is saved to `reports/trace-<timestamp>.zip`. Open it with:
+**Assertions live in step definitions.** Page objects expose locators and actions only.
 
-   ```bash
-   npx playwright show-trace reports/trace-<timestamp>.zip
-   ```
+**Known defects are tagged, not deleted.** Two scenarios encode behaviour the acceptance criteria require but the application does not currently exhibit. They are excluded from the CI gate so a genuine regression is never mistaken for a documented one, and can be run deliberately with `npm run test:known-issues`.
 
-## Using Cline Agents
+### Tags
 
-### Example: Generate Feature, Scenario, Step Definitions and Page Objects for ZincBank Login
+| Tag | Purpose |
+|---|---|
+| `@ci` | Scenarios selected for automatic CI; they avoid the account-registration flows |
+| `@known-bug` | Expected to fail; documents behaviour the application does not exhibit |
+| `@smoke`, `@regression` | Breadth selection |
+| `@A1`, `@A2`, `@A3` | Module traceability |
 
-The following CLI commands illustrate how to generate a feature file, scenario, step definitions, and a page object for the login page at `https://zincbank.cydeo.io/login` using valid credentials.
+## Test coverage
+
+3 feature files, **22 executable scenarios**, 159 steps. There are 21 `Scenario` and `Scenario Outline` blocks; one Outline contributes two examples.
+
+| Module | Scenarios | Covers |
+|---|---:|---|
+| A1 - Open an account | 1 | Full multi-step application through to dashboard |
+| A2 - Login | 14 | Valid sign-in, case-insensitive email, empty, invalid and incorrect credentials, field masking, accessibility labels, navigation |
+| A3 - Duplicate email | 7 | Duplicate rejection, case and whitespace boundaries, form-state retention, existing-account integrity |
+
+| Suite | Script | Scenarios | Registers accounts |
+|---|---|---:|---|
+| Automatic CI gate | `test:ci` | 12 | No; excludes the registration flows |
+| Regression | `test:passing` | 20 | Yes |
+| Known defects | `test:known-issues` | 2 | Yes |
+
+`test:passing` excludes the two `@known-bug` scenarios, but it includes the account-registration flows and **has not been executed in CI**. Only the 12 `@ci` scenarios have verified CI results.
+
+## Getting started
 
 ```bash
-# Generate a feature named "login"
-cline generate feature --name login --url https://zincbank.cydeo.io/login
-
-# Generate a scenario within the feature
-cline generate scenario --feature login --title "Login with valid credentials"
-
-# Generate step definitions for the scenario
-cline generate step \\
-  --scenario login \\
-  --given "I am on the login page" \\
-  --when "I fill in email \"student01@zinc.test\" and password \"9pJolA7GBQec\"" \\
-  --then "I should be redirected to the dashboard"
-
-# Generate a page object for the login page
-cline generate page --url https://zincbank.cydeo.io/login --name LoginPage
+npm ci                            # Node 22
+npx playwright install chromium
 ```
-
-These commands will create the necessary markdown feature, Gherkin scenario, TypeScript step definition files under `steps/`, and a Page Object class under `src/pages/`. After generation, run the test suite:
 
 ```bash
-npm run test
+npm run test:ci            # 12 scenarios; no account registration
+npm run test:passing       # 20 scenarios, excludes @known-bug; registers accounts; not CI-verified
+npm run test:known-issues  # 2 scenarios; expected to fail
+npm run test:dry           # resolve all steps; no browser, no network
+npm run lint
 ```
 
-## Using Cline commands from chat
+> `npm test` runs every scenario including `@known-bug`, so it exits non-zero by design. `npm run test:passing` excludes those two scenarios, but it also drives the account-registration flows and has not been verified by CI.
 
-You can invoke Cline actions directly from a chat interface. For example:
+Failures write `reports/cucumber-report.html` plus a screenshot and Playwright trace to `reports/`. Open a trace with:
 
 ```bash
-cline orchestrate "generate feature login for https://zincbank.cydeo.io/login with credentials student01@zinc.test / 9pJolA7GBQec"
+npx playwright show-trace reports/trace-<timestamp>.zip
 ```
 
-The orchestrator parses the request, runs the appropriate agents, and automatically creates the feature, scenario, step definitions, and a page object.
+## CI
 
-## Solution
+Two workflows answering different questions. Neither runs on a schedule.
 
-To run the Cline CLI:
+### Framework Checks (`ci.yml`) — no demo server required
 
-1. **Install dependencies** (already completed with the legacy flag):
+Lint, then `cucumber-js --dry-run` across every scenario, then a scenario-integrity guard.
 
-   ```bash
-   npm install --legacy-peer-deps
-   ```
+The dry run validates **Gherkin-to-step-definition matching** and that step and hook modules load under ts-node. **No scenario is executed:** no browser launches, and no request reaches the application.
 
-2. **Use the CLI via `npx`** (or add a script):
+The guard exists because `cucumber-js` exits `0` even when it reports undefined or ambiguous steps, and when a tag expression matches nothing — with or without `--strict`. An exit code alone therefore cannot distinguish a real pass from a vacuous one. The guard fails the job on undefined, ambiguous or pending steps, on zero discovered scenarios, or when no Cucumber summary is produced. It was added after an undefined step was found during investigation, to prevent that class of problem from being silently accepted again.
 
-   ```bash
-   npx cline orchestrate "generate feature login for https://zincbank.cydeo.io/login with credentials student01@zinc.test / 9pJolA7GBQec"
-   ```
+This workflow stays meaningful if the demo application is withdrawn.
 
-   If you prefer a shortcut, add a script to `package.json`:
+### Live E2E (`e2e.yml`) — requires the demo server
 
-   ```json
-   "scripts": {
-     "cline": "cline"
-   }
-   ```
+- **Read-only smoke** — automatic on push and pull request to `main`: the 12 `@ci` scenarios. These avoid the account-registration flows and are intended not to create persistent test accounts.
+- **Full regression** — manual dispatch only, because each run registers accounts on a shared training server with no teardown.
 
-   Then run:
+Reports, screenshots and traces upload on failure only. The HTML report renders Gherkin step text verbatim, which includes test credentials, so publishing it on every run was needless exposure.
 
-   ```bash
-   npm run cline -- orchestrate "generate feature login for https://zincbank.cydeo.io/login with credentials student01@zinc.test / 9pJolA7GBQec"
-   ```
+## Verified results — 2026-10-19
 
-## Visualizing the Architecture Diagram
+Commit [`dfa4cd7`](https://github.com/RolanV/ZincBank/commit/dfa4cd7fb145d89abbaaf2f25bb00134c722a67f), `ubuntu-latest`, Node v22.23.3, Chromium.
 
-The repository includes a Graphviz DOT file (`diagram.dot`) that illustrates the relationships between **Clinerules**, **Agents**, **Templates**, **Prompts**, and **Skills**.
+| Workflow | Result | What was measured |
+|---|---|---|
+| [Framework Checks](https://github.com/RolanV/ZincBank/actions/runs/39334388360) | pass, 51 s | **22 scenarios and 159 steps resolved, not executed.** Zero undefined, ambiguous or pending steps. |
+| [E2E — read-only smoke](https://github.com/RolanV/ZincBank/actions/runs/39334388366) | pass, 2 m 10 s | **12 scenarios executed, 12 passed. 78 steps passed, 0 failed.** |
+| E2E — full regression | not run | Manual dispatch only. **Never executed in CI,** so its 20 scenarios are unverified by CI. |
 
-### How to render the diagram
+Full record, including the preceding failing run and its fix: [`docs/ci-evidence-2026-10-19.md`](docs/ci-evidence-2026-10-19.md)
 
-#### macOS / Linux
+## Limitations
 
-```bash
-# Install Graphviz if not already installed
-brew install graphviz   # Homebrew (macOS)
-# or
-sudo apt-get install graphviz   # Debian/Ubuntu
+- **Third-party application.** Hosted by CYDEO; it can change or be withdrawn without notice. A Live E2E failure may reflect that rather than a framework defect.
+- **No teardown.** Registration scenarios create accounts on a shared training server and nothing removes them, so full regression is manual-only.
+- **Serial execution.** Parallel execution is not configured or tested; see [Design decisions](#design-decisions).
+- **Test credentials are committed** in `features/` and remain in git history. The project uses CYDEO practice credentials for the training application. They have not been removed or rotated.
+- **Scope.** Chromium only. No API-layer, visual or performance testing.
+- **Two scenarios document behaviour the application does not exhibit,** tagged `@known-bug`.
+- **Some step definitions assert on booleans** returned by page-object helpers, using `expect(value).toBeTruthy()`. This discards Playwright's auto-waiting and produces weak failure messages. Replacing them is a remaining improvement opportunity.
+- **A Husky pre-commit hook is configured** in the repository, but it is not verified by CI and its behaviour has not been confirmed in this project.
+- **Development artifacts retained.** `handoffs/`, `reports/A3-*.md` and `tests/LOGIN_TEST_SUITE.md` are working notes from development, kept for transparency rather than as documentation.
 
-# Generate a PNG from the DOT file
-dot -Tpng diagram.dot -o diagram.png
+## Background
 
-# Open the image
-open diagram.png   # macOS
-xdg-open diagram.png   # Linux
-```
+### Instructor-led training
 
-#### Windows
+The framework scaffolding — tool configuration, the original CI workflow, and the `.clinerules/` and `.cline/` documentation sets — was introduced by **@AdamB25**, one of my instructors at CYDEO, during instructor-led training. I did not design or create that original scaffold.
 
-```powershell
-# Install Graphviz (e.g., via Chocolatey)
-choco install graphviz
+The ZincBank test automation built on top of it — the Gherkin specifications, step definitions, page objects, Cucumber World and lifecycle hooks, the two-workflow CI design, and the defect investigation in the case study — is my implementation, produced with AI assistance as described below.
 
-# Generate a PNG from the DOT file
-dot -Tpng diagram.dot -o diagram.png
+### AI-assisted development
 
-# Open the image
-Start-Process diagram.png
-```
+This is an **AI-assisted** project, and I would rather state that than imply otherwise.
 
-The resulting `diagram.png` provides a clear visual representation of how the core components of the Cline automation framework interact.
+I directed the work, reviewed the implementation, investigated problems with AI assistance, evaluated the proposed solutions, and verified the results. I did not hand-write every line, and the project is not AI output accepted without engineering involvement.
 
-The framework is driven by **AI agents** that each own a single responsibility. Agents live under `.cline/agents/` and are orchestrated by the Master Orchestrator.
+The CI rebuild is a concrete example. The first live E2E run failed one scenario with `expect(received).toBeTruthy()` and `Received: false` — a message carrying no URL and no context. Rather than retrying it, we examined the Playwright trace uploaded by the failing run, identified a client-side navigation race, replaced the assertion with Playwright's auto-retrying `toHaveURL()`, validated the single affected scenario, and then confirmed all 12 E2E scenarios passing in GitHub Actions. The evidence, reasoning and rejected alternatives are written up in [the case study](docs/case-study-navigation-race.md).
 
-### Core CLI commands
+### `.clinerules/` and `.cline/`
 
-```bash
-cline <action> [options]
-```
+These directories contain **Markdown documents only** — rule definitions in `.clinerules/` covering architecture, coding standards, locator rules, naming conventions, a review checklist, security and a human-approval process, and agent, skill, prompt and template definitions in `.cline/`. They came with the training scaffolding.
 
-| Action                        | Description                                                                                     |
-| ----------------------------- | ----------------------------------------------------------------------------------------------- |
-| `cline generate feature`      | Starts the Feature Generator workflow (creates a feature file, scenarios, tags, etc.).          |
-| `cline generate page`         | Scaffolds a new Page Object using the `page-object.md` template.                                |
-| `cline generate component`    | Scaffolds a Component Object.                                                                   |
-| `cline run <agent-name>`      | Directly runs a specific agent (useful for debugging).                                          |
-| `cline orchestrate <request>` | Sends a free‑form request to the Master Orchestrator which routes it to the appropriate agents. |
-
-All commands respect the **Human Approval** process defined in `.clinerules/human-approval.md`. After a major step (e.g., generating a feature file or modifying source code) the orchestrator pauses and prompts you to **Approve** or **Reject** the artefact.
-
-### New: Website Analyzer Agent
-
-The **Website Analyzer Agent** (`website-analyzer`) automatically:
-
-1. Uses the Playwright MCP `browser_snapshot` tool to capture an accessibility snapshot of a live URL.
-2. Parses the snapshot to discover interactive elements (buttons, links, inputs, etc.) according to `.clinerules/locator-rules.md`.
-3. Generates or updates a Cucumber **feature file** under `tests/` with scenarios that exercise each discovered element.
-4. Returns a summary of the operation (snapshot file, feature file path, number of scenarios created).
-
-**Example usage**
-
-```bash
-cline run website-analyzer --url https://example.com/login
-```
-
-You will be prompted to approve the generated scenarios before they are persisted.
-
-## Example: Generate Scenarios from Zinc Bank Login Page
-
-The following prompt demonstrates how to explore a live login page and automatically generate comprehensive Gherkin scenarios using the Orchestrator:
-
-**Prompt**
-
-```
-Explore the page https://zincbank.cydeo.io/login and generate scenarios with Email/Password as student01@zinc.test/9pJolA7GBQec
-```
-
-**Generated Gherkin Scenarios**
-
-```gherkin
-Feature: Zinc Bank User Login
-  As a Zinc Bank customer
-  I want to log in with my email and password
-  So that I can access my account
-
-  Background:
-    Given I navigate to "https://zincbank.cydeo.io/login"
-
-  Scenario: Successful login with valid credentials
-    When I fill the email field with "student01@zinc.test"
-    And I fill the password field with "9pJolA7GBQec"
-    And I click the "Sign in" button
-    Then I should be redirected to the dashboard page
-    And the page title should contain "Zinc Bank"
-
-  Scenario: Login attempt with empty email field
-    When I leave the email field empty
-    And I fill the password field with "9pJolA7GBQec"
-    And I click the "Sign in" button
-    Then I should see an error message indicating email is required
-
-  Scenario: Login attempt with empty password field
-    When I fill the email field with "student01@zinc.test"
-    And I leave the password field empty
-    And I click the "Sign in" button
-    Then I should see an error message indicating password is required
-
-  Scenario: Login attempt with invalid credentials
-    When I fill the email field with "invalid@test.com"
-    And I fill the password field with "wrongpassword"
-    And I click the "Sign in" button
-    Then I should see an error message indicating login failed
-
-  Scenario: Navigate to account creation from login page
-    When I click the "Open an account" link
-    Then I should be navigated to the account creation page
-```
-
-This example illustrates how the **Orchestrator** can automatically:
-
-- Analyze a live webpage using Playwright snapshots
-- Generate business‑focused Gherkin scenarios
-- Map UI elements to step definitions
-- Create corresponding Page Objects for interaction
-
-## CI/CD Pipeline
-
-GitHub Actions (`.github/workflows/ci.yml`) automatically:
-
-- Lints the code
-- Runs Playwright tests with Allure reporting
-- Publishes the Allure report as GitHub Pages
-
-## Contribution Guidelines
-
-- Follow the **Human Approval** process for any major change (see `.clinerules/human-approval.md`).
-- Keep code style consistent (`npm run lint`, `npm run format`).
-- Update documentation when adding or modifying agents, skills, or templates.
-
-## License
-
-MIT
-
-_Generated by the Cline Documentation Agent._
+They are documentation and configuration. **No CLI or tool that executes them is installed in this repository,** and no part of the test suite depends on them.
