@@ -1,79 +1,76 @@
-name: CI
+name: Framework Checks
+
+# Framework-level validation that does NOT depend on the external CYDEO demo
+# application. These checks stay meaningful (and should stay green) even if the
+# third-party demo server changes or is shut down, because they validate this
+# repository's own code: lint rules, and whether every Gherkin step in every
+# feature file resolves to exactly one step definition.
+#
+# Live end-to-end execution against the demo app lives in e2e.yml.
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  lint:
+  validate:
+    name: Lint & scenario integrity
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
-      - name: Install dependencies
-        run: npm ci
-      - name: Run ESLint
+          # @cucumber/cucumber@13.2.1 declares engines.node "22 || 24 || >=26",
+          # so Node 20 is not supported by the test runner.
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Lint
         run: npm run lint
 
-  test:
-    runs-on: ubuntu-latest
-    needs: lint
-    services:
-      # Example service; can be replaced with actual app server if needed
-      web:
-        image: node:20-alpine
-        ports:
-          - 3000:3000
-        options: >-
-          --health-cmd="curl -f http://localhost:3000 || exit 1"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install dependencies
-        run: npm ci
-      - name: Run Playwright tests with Allure
-        run: npm run test:report
-      - name: Upload Allure results
-        uses: actions/upload-artifact@v4
-        with:
-          name: allure-results
-          path: allure-results
-
-  allure-report:
-    runs-on: ubuntu-latest
-    needs: test
-    if: always()
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download Allure results
-        uses: actions/download-artifact@v4
-        with:
-          name: allure-results
-          path: allure-results
-      - name: Install Allure commandline
+      # --dry-run resolves every step against the step definitions without
+      # executing steps or hooks: no browser is launched and no request is made
+      # to the demo application. Scope: it validates Gherkin-to-step-definition
+      # matching, and that the step/hook modules load under ts-node. It does
+      # NOT exercise page objects, locators or browser behaviour -- only the
+      # live E2E run does that.
+      - name: Resolve all Gherkin steps (dry run, no browser, no network)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openjdk-11-jre
-          curl -o allure.tgz -L https://repo.maven.apache.org/maven2/io/qameta/allure/allure-commandline/2.29.0/allure-commandline-2.29.0.tgz
-          tar -zxvf allure.tgz
-          sudo mv allure-2.29.0 /opt/allure
-          sudo ln -s /opt/allure/bin/allure /usr/local/bin/allure
-      - name: Generate Allure report
-        run: allure generate allure-results --clean -o allure-report
-      - name: Deploy Allure report as GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./allure-report
-          force_orphan: true
+          set -o pipefail
+          npm run test:dry 2>&1 | tee "$RUNNER_TEMP/cucumber.log"
+
+      # cucumber-js exits 0 even when it reports undefined or ambiguous steps,
+      # and also when a tag expression matches nothing. Verified locally:
+      # a dry run with 1 undefined step exits 0, with or without --strict.
+      # The exit code therefore cannot be trusted; parse the summary instead.
+      - name: Verify scenario integrity
+        run: |
+          summary=$(sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$RUNNER_TEMP/cucumber.log" \
+            | grep -oE '^[0-9]+ scenarios?.*' | tail -1)
+          if [ -z "$summary" ]; then
+            echo "::error::No Cucumber summary line found; cannot confirm what ran."
+            exit 1
+          fi
+          if [ "${summary%% *}" -eq 0 ]; then
+            echo "::error::Cucumber discovered 0 scenarios."
+            exit 1
+          fi
+          case "$summary" in
+            *undefined*|*ambiguous*|*pending*)
+              echo "::error::Unresolved steps detected: $summary"
+              exit 1
+              ;;
+          esac
+          echo "Cucumber summary: $summary"
