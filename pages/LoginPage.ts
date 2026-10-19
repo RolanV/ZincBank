@@ -103,8 +103,10 @@ export class LoginPage extends BasePage {
    * Click the Open an account link
    */
   async clickOpenAccount(): Promise<void> {
+    // No load-state wait: this is a client-side route change, so there is no
+    // document load to wait for. The caller asserts the destination with a
+    // web-first assertion, which retries until the router commits.
     await this.openAccountLink.click();
-    await this.page.waitForLoadState('networkidle');
   }
 
   /**
