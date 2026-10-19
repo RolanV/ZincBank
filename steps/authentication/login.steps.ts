@@ -144,14 +144,12 @@ Then('an email format error should be displayed', async function () {
  * Then: User should be redirected to the account creation page
  */
 Then('the user should be redirected to the account creation page', async function () {
-  await page.waitForLoadState('networkidle');
-  const currentUrl = await loginPage.getCurrentUrl();
-  const isOnAccountPage =
-    currentUrl.includes('signup') ||
-    currentUrl.includes('register') ||
-    currentUrl.includes('account') ||
-    !currentUrl.includes('login');
-  expect(isOnAccountPage).toBeTruthy();
+  // "Open an account" is a Next.js App Router client-side transition: the app
+  // fetches an RSC payload (/apply?_rsc=...) and no document load fires, so
+  // waitForLoadState('networkidle') resolved in 0ms against the old URL and
+  // page.url() was read before the router committed. toHaveURL retries until
+  // the URL settles, and reports the actual URL on failure.
+  await expect(page).toHaveURL(/\/apply(\?|$)/);
 });
 
 /**

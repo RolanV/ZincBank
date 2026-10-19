@@ -1,0 +1,172 @@
+name: E2E (live demo app)
+
+# End-to-end execution against the third-party CYDEO demo application at
+# zincbank.cydeo.io. This repository does not own or control that server, so a
+# failure here may mean the demo app changed or became unavailable rather than
+# a defect in this framework. Framework-level validation that does not depend
+# on the demo app lives in ci.yml.
+#
+# No scheduled triggers: nothing runs on a timer.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Suite to run'
+        type: choice
+        default: smoke
+        options:
+          - smoke
+          - regression
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Read-only smoke (@ci)
+    # Automatic on push and pull request; also selectable on manual dispatch.
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.suite == 'smoke'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+
+      # hooks/globalHooks.ts calls chromium.launch(); npm ci installs the
+      # @playwright/test package but not the browser binaries.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # test:ci == `--tags '@ci and not @known-bug'` -> 12 login scenarios.
+      # The @ci set is read-only: it creates no accounts and modifies no
+      # persistent data on the shared demo app.
+      - name: Run read-only smoke suite
+        run: |
+          set -o pipefail
+          npm run test:ci 2>&1 | tee "$RUNNER_TEMP/cucumber.log"
+
+      # cucumber-js exits 0 when a tag expression matches nothing and when it
+      # reports undefined or ambiguous steps, so the exit code alone cannot
+      # confirm that the intended scenarios actually ran.
+      - name: Verify scenarios actually ran
+        run: |
+          summary=$(sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$RUNNER_TEMP/cucumber.log" \
+            | grep -oE '^[0-9]+ scenarios?.*' | tail -1)
+          if [ -z "$summary" ]; then
+            echo "::error::No Cucumber summary line found; cannot confirm what ran."
+            exit 1
+          fi
+          if [ "${summary%% *}" -eq 0 ]; then
+            echo "::error::Cucumber matched 0 scenarios - '@ci' selected nothing."
+            exit 1
+          fi
+          case "$summary" in
+            *undefined*|*ambiguous*|*pending*)
+              echo "::error::Unresolved steps detected: $summary"
+              exit 1
+              ;;
+          esac
+          echo "Cucumber summary: $summary"
+
+      # Failure-only: the HTML report renders Gherkin step text verbatim, which
+      # currently includes demo credentials. A passing run's report has little
+      # debugging value, so it is not published. This reduces exposure but does
+      # not protect those credentials, which are also committed in this repo.
+      - name: Upload Cucumber HTML report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-cucumber-report
+          path: reports/cucumber-report.html
+          retention-days: 30
+
+      # globalHooks.ts writes these only for failed scenarios, so the globs are
+      # empty on success and if a run dies before any scenario starts.
+      - name: Upload failure screenshots and traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-failure-artifacts
+          path: |
+            reports/*.png
+            reports/*.zip
+          if-no-files-found: ignore
+          retention-days: 7
+
+  regression:
+    name: Full regression (manual)
+    # Manual only: each run registers roughly 7 accounts on the shared demo
+    # app, and the suite has no teardown.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.suite == 'regression'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # test:passing == `--tags 'not @known-bug'` -> 22 scenarios minus the two
+      # documented defects. test:regression would match all 22, including those
+      # two, and so could never go green.
+      - name: Run regression suite
+        run: |
+          set -o pipefail
+          npm run test:passing 2>&1 | tee "$RUNNER_TEMP/cucumber.log"
+
+      - name: Verify scenarios actually ran
+        run: |
+          summary=$(sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$RUNNER_TEMP/cucumber.log" \
+            | grep -oE '^[0-9]+ scenarios?.*' | tail -1)
+          if [ -z "$summary" ]; then
+            echo "::error::No Cucumber summary line found; cannot confirm what ran."
+            exit 1
+          fi
+          if [ "${summary%% *}" -eq 0 ]; then
+            echo "::error::Cucumber matched 0 scenarios - the tag expression selected nothing."
+            exit 1
+          fi
+          case "$summary" in
+            *undefined*|*ambiguous*|*pending*)
+              echo "::error::Unresolved steps detected: $summary"
+              exit 1
+              ;;
+          esac
+          echo "Cucumber summary: $summary"
+
+      - name: Upload Cucumber HTML report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: regression-cucumber-report
+          path: reports/cucumber-report.html
+          retention-days: 30
+
+      - name: Upload failure screenshots and traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: regression-failure-artifacts
+          path: |
+            reports/*.png
+            reports/*.zip
+          if-no-files-found: ignore
+          retention-days: 7

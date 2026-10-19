@@ -14,7 +14,7 @@ Feature: Duplicate email registration - A3
 
   @A3 @regression @negative
   Scenario: Registering again with the same email is rejected
-    When the user applies for an account using the already-registered email/
+    When the user applies for an account using the already-registered email
     Then the application is rejected
     And a duplicate-email message is shown
 
