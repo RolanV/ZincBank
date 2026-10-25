@@ -216,11 +216,8 @@ Then(
 Then(
   'the Sign in button should have an accessible label {string}',
   async function (labelText: string) {
-    const buttonVisible = await loginPage.isSignInButtonVisible();
-    expect(buttonVisible).toBeTruthy();
-
-    const buttonText = await loginPage.signInButton.textContent();
-    expect(buttonText).toContain(labelText);
+    await expect(loginPage.signInButton).toBeVisible();
+    await expect(loginPage.signInButton).toContainText(labelText);
   },
 );
 
@@ -247,11 +244,7 @@ Then('the login page should load within {int} seconds', async function (seconds:
  * Then: All login form elements should be visible
  */
 Then('all login form elements should be visible', async function () {
-  const emailVisible = await loginPage.isEmailInputVisible();
-  const passwordVisible = await loginPage.isPasswordInputVisible();
-  const buttonVisible = await loginPage.isSignInButtonVisible();
-
-  expect(emailVisible).toBeTruthy();
-  expect(passwordVisible).toBeTruthy();
-  expect(buttonVisible).toBeTruthy();
+  await expect(loginPage.emailInput).toBeVisible();
+  await expect(loginPage.passwordInput).toBeVisible();
+  await expect(loginPage.signInButton).toBeVisible();
 });
