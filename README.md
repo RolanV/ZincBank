@@ -40,7 +40,6 @@ pages/                     BasePage, LoginPage, OpenAccountPage, DuplicateEmailP
 hooks/globalHooks.ts       Cucumber World, browser lifecycle, tracing
 globalPagesSetup.ts        Page-object wiring, re-initialised per scenario
 utilities/                 Shared helpers
-data/                      Test-data fixtures
 .clinerules/               Markdown rule definitions
 .cline/                    Markdown agent, skill, prompt and template definitions
 .github/workflows/         ci.yml (Framework Checks), e2e.yml (Live E2E)
