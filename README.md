@@ -85,15 +85,15 @@ A Gherkin line is matched to a step definition, which calls a page-object method
 
 ```mermaid
 flowchart TD
-    A["cucumber.js loads features, steps and hooks"] --> B["Before hook: launch Chromium, create context and page, start tracing, initElements(page)"]
-    B --> C["Gherkin step text in a .feature file"]
-    C --> D["Step definition matching that text"]
-    D --> E["Page object: locators and actions"]
-    E --> F["Playwright drives the browser"]
-    F --> G["Assertion in the step definition"]
+    A["Cucumber starts"] --> B["Before hook"]
+    B --> C["Gherkin step"]
+    C --> D["Step definition"]
+    D --> E["Page object"]
+    E --> F["Playwright action"]
+    F --> G["Assertion"]
     G --> H{"Scenario result"}
-    H -->|passed| I["After hook: discard trace, close context and browser"]
-    H -->|failed| J["After hook: save screenshot and trace to reports/, close context and browser"]
+    H -->|passed| I["After hook: discard"]
+    H -->|failed| J["After hook: save"]
 ```
 
 ### CustomWorld and the hooks
