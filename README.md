@@ -89,11 +89,11 @@ flowchart TD
     B --> C["Gherkin step"]
     C --> D["Step definition"]
     D --> E["Page object"]
-    E --> F["Playwright action"]
+    E --> F["Playwright"]
     F --> G["Assertion"]
     G --> H{"Scenario result"}
-    H -->|passed| I["After hook: discard"]
-    H -->|failed| J["After hook: save"]
+    H -->|passed| I["Discard trace"]
+    H -->|failed| J["Save evidence"]
 ```
 
 ### CustomWorld and the hooks
